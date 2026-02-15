@@ -1,0 +1,130 @@
+version: "2.1"
+
+services:
+  zookeeper:
+    image: docker.repository.cloudera.com/cloudera/csp-ce/zookeeper:2.0.0.0
+    container_name: quake-zookeeper
+    ports:
+      - "2181:2181"
+    networks:
+      - quake-net
+    volumes:
+      - zk-volume:/data
+    healthcheck:
+      test: bash -c '/usr/bin/test $$({ printf >&3 "ruok" && /usr/bin/cat <&3; } 3<>/dev/tcp/localhost/2181) == "imok"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: on-failure
+
+  kafka:
+    image: docker.repository.cloudera.com/cloudera/csp-ce/kafka:2.0.0.0
+    container_name: quake-kafka
+    ports:
+      - "9092:9092"
+      - "9094:9094"   # wie in euren Aufgaben: Clients/Tools -> localhost:9094
+    networks:
+      - quake-net
+    volumes:
+      - kf-volume:/data
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092" ]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    restart: on-failure
+
+  nifi:
+    image: apache/nifi:1.25.0
+    container_name: quake-nifi
+    depends_on:
+      kafka:
+       condition: service_healthy
+      postgres:
+        condition: service_started
+    ports:
+      - "8443:8443"
+    environment:
+      - SINGLE_USER_CREDENTIALS_USERNAME=admin
+      - SINGLE_USER_CREDENTIALS_PASSWORD=adminadminadmin
+    networks:
+      - quake-net
+    volumes:
+      - nifi-conf:/opt/nifi/nifi-current/conf
+      - nifi-state:/opt/nifi/nifi-current/state
+      - nifi-db:/opt/nifi/nifi-current/database_repository
+      - nifi-flowfile:/opt/nifi/nifi-current/flowfile_repository
+      - nifi-content:/opt/nifi/nifi-current/content_repository
+      - nifi-provenance:/opt/nifi/nifi-current/provenance_repository
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    container_name: quake-postgres
+    environment:
+      POSTGRES_USER: quake
+      POSTGRES_PASSWORD: quakepass
+      POSTGRES_DB: earthquakes
+    ports:
+      - "5432:5432"
+    networks:
+      - quake-net
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  db-writer:
+    build:
+      context: ./db-writer
+    container_name: quake-db-writer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP: "kafka:9092"
+      KAFKA_TOPIC: "earthquakes_raw"
+      KAFKA_GROUP: "quake-db-writer"
+      PG_HOST: "postgres"
+      PG_PORT: "5432"
+      PG_DB: "earthquakes"
+      PG_USER: "quake"
+      PG_PASS: "quakepass"
+      BATCH_SIZE: "50"
+    networks:
+      - quake-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: quake-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - quake-net
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+networks:
+  quake-net:
+    driver: bridge
+
+volumes:
+  zk-volume:
+  kf-volume:
+  nifi-conf:
+  nifi-state:
+  nifi-db:
+  nifi-flowfile:
+  nifi-content:
+  nifi-provenance:
+  pg-data:
+  grafana-data:
