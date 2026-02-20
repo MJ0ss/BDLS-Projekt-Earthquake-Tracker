@@ -22,7 +22,7 @@ services:
     container_name: quake-kafka
     ports:
       - "9092:9092"
-      - "9094:9094"   # wie in euren Aufgaben: Clients/Tools -> localhost:9094
+      - "9094:9094"
     networks:
       - quake-net
     volumes:
@@ -59,6 +59,7 @@ services:
       - nifi-flowfile:/opt/nifi/nifi-current/flowfile_repository
       - nifi-content:/opt/nifi/nifi-current/content_repository
       - nifi-provenance:/opt/nifi/nifi-current/provenance_repository
+      - ./NiFi_Flow.json:/opt/nifi/nifi-current/conf/flow.json.gz:ro
     restart: unless-stopped
 
   postgres:
@@ -111,6 +112,8 @@ services:
       - quake-net
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     restart: unless-stopped
 
 networks:
