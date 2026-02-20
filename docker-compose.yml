@@ -111,8 +111,6 @@ services:
       - quake-net
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
     restart: unless-stopped
 
 networks:
